@@ -253,6 +253,31 @@ def user_impact(user: str):
         },
     }
 
+@app.get("/api/users/{user}/badges")
+def user_badges(user: str):
+    imp = user_impact(user)
+    st = streak(user)["streak_days"]
+    
+    badges = [
+        {"id": "first-cleanup", "name": "First Cleanup", "emoji": "🧹", "earned_hint": "Clean up your first trash"},
+        {"id": "five-cleanups", "name": "Five Cleanups", "emoji": "🏆", "earned_hint": "Clean up 5 pieces of trash"},
+        {"id": "first-report", "name": "First Report", "emoji": "📍", "earned_hint": "Report your first trash"},
+        {"id": "week-streak-3", "name": "3-Day Streak", "emoji": "🔥", "earned_hint": "Log actions 3 days in a row"},
+        {"id": "kg10-co2e", "name": "10kg CO2e", "emoji": "🌍", "earned_hint": "Avoid 10kg of CO2e"},
+    ]
+    
+    earned_ids = set()
+    if imp["cleanups"] >= 1: earned_ids.add("first-cleanup")
+    if imp["cleanups"] >= 5: earned_ids.add("five-cleanups")
+    if imp["reports_filed"] >= 1: earned_ids.add("first-report")
+    if st >= 3: earned_ids.add("week-streak-3")
+    if imp["kg_co2e_avoided"] >= 10.0: earned_ids.add("kg10-co2e")
+    
+    for b in badges:
+        b["earned"] = b["id"] in earned_ids
+        
+    return badges
+
 
 def get_report_row(c: sqlite3.Connection, rid: int) -> dict:
     return dict(c.execute("SELECT * FROM reports WHERE id=?", (rid,)).fetchone())

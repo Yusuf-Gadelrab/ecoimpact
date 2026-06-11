@@ -123,3 +123,26 @@ def test_bad_inputs(tmp_path):
     assert c.post("/api/reports", json={"lat": 37.3, "lng": -121.9,
                                         "category": "nope"}).status_code == 422
     assert c.post("/api/reports/999/clean", json={"user": "x"}).status_code == 404
+
+def test_user_badges(tmp_path):
+    c = fresh_client(tmp_path)
+    
+    b0 = c.get("/api/users/yusuf/badges").json()
+    assert all(not b["earned"] for b in b0)
+    
+    rep = c.post("/api/reports", json={"lat": 37.3, "lng": -121.9, "category": "bag", "reporter": "yusuf"}).json()
+    c.post(f"/api/reports/{rep['id']}/clean", json={"user": "yusuf"})
+    
+    b1 = c.get("/api/users/yusuf/badges").json()
+    earned = {b["id"] for b in b1 if b["earned"]}
+    assert "first-report" in earned
+    assert "first-cleanup" in earned
+    assert "five-cleanups" not in earned
+    assert "kg10-co2e" not in earned
+    
+    for _ in range(5):
+        c.post("/api/actions", json={"user": "yusuf", "type": "bike_commute"})
+    
+    b2 = c.get("/api/users/yusuf/badges").json()
+    earned2 = {b["id"] for b in b2 if b["earned"]}
+    assert "kg10-co2e" in earned2

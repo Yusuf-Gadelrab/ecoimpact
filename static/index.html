@@ -110,6 +110,13 @@ ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13
   padding:9px 12px; margin-top:16px; font-size:12.5px; color:var(--dim); }
 .hint b { color:var(--green); }
 
+.badges { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.badge { display:grid; place-items:center; width:44px; height:44px; border-radius:50%;
+  background:rgba(8,16,12,.6); border:1px solid var(--line); font-size:22px;
+  opacity:0.3; filter:grayscale(1); transition:transform .2s; cursor:default; }
+.badge.earned { opacity:1; filter:none; border-color:var(--green); background:rgba(61,220,132,.1); }
+.badge.new-earn { animation:pop .45s cubic-bezier(.2,.9,.3,1.4) both; }
+
 /* pulsing open-trash markers */
 .pin.new { animation:pop .45s cubic-bezier(.2,.9,.3,1.4) both; }
 .pin { position:relative; }
@@ -208,6 +215,9 @@ ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13
   </div>
   <div class="hint" id="me-recap" style="display:none"></div>
 
+  <h2 id="badges-h2" style="display:none">Badges</h2>
+  <div class="badges" id="badges-container" style="display:none"></div>
+
   <h2>Log an action</h2>
   <div class="actions">
     <button data-a="lights_off"><span>💡 Turned the lights off</span><span class="gain">+0.12 kg</span></button>
@@ -236,8 +246,9 @@ const user = () => $('user').value.trim() || 'anonymous';
 const markers = L.layerGroup().addTo(map);
 const CATS = { litter:'Litter', bag:'Trash bag', plastic:'Plastic', ewaste:'E-waste',
                hazard:'Hazard (report only)' };
+let earnedBadges = new Set();
 $('user').value = localStorage.ecoName || '';
-$('user').addEventListener('change', () => { localStorage.ecoName = user(); refreshStreak(); refreshMe(); });
+$('user').addEventListener('change', () => { localStorage.ecoName = user(); earnedBadges.clear(); refreshStreak(); refreshMe(); refreshBadges(); });
 
 async function api(path, opts) {
   const r = await fetch(path, opts ? { method:'POST',
@@ -325,6 +336,33 @@ async function refreshMe() {
   }
 }
 
+async function refreshBadges() {
+  if (user() === 'anonymous') {
+    $('badges-h2').style.display = 'none';
+    $('badges-container').style.display = 'none';
+    return;
+  }
+  const badges = await api(`/api/users/${encodeURIComponent(user())}/badges`);
+  $('badges-h2').style.display = 'block';
+  $('badges-container').style.display = 'flex';
+  
+  let html = '';
+  for (const b of badges) {
+    let cls = 'badge';
+    if (b.earned) {
+      cls += ' earned';
+      if (!earnedBadges.has(b.id) && earnedBadges.size > 0) {
+        cls += ' new-earn';
+        toast(`🏅 badge earned: <b>${b.name}</b>`);
+      }
+      earnedBadges.add(b.id);
+    }
+    const title = b.earned ? b.name : b.earned_hint;
+    html += `<div class="${cls}" title="${title}">${b.emoji}</div>`;
+  }
+  $('badges-container').innerHTML = html;
+}
+
 function toast(html) {
   const el = document.createElement('div');
   el.className = 'toast'; el.innerHTML = html;
@@ -359,7 +397,7 @@ window.cleanIt = async (id) => {
     await api(`/api/reports/${id}/clean`, { user: user() });
     map.closePopup(); confetti();
     toast('🌍 <b>+impact!</b> pin cleaned — the world thanks you');
-    refresh(); refreshStreak(); refreshMe();
+    refresh(); refreshStreak(); refreshMe(); refreshBadges();
   } catch (e) { toast('⚠ ' + e.message); }
 };
 
@@ -384,11 +422,11 @@ document.querySelectorAll('.actions button').forEach(b =>
   b.addEventListener('click', async () => {
     const res = await api('/api/actions', { user: user(), type: b.dataset.a });
     toast(`✨ logged — <b>+${res.kg_co2e || res.kg_waste} kg</b> · +${res.points} pts`);
-    refresh(); refreshStreak(); refreshMe();
+    refresh(); refreshStreak(); refreshMe(); refreshBadges();
   }));
 
-refresh(); refreshStreak(); refreshMe();
-setInterval(() => { refresh(); refreshMe(); }, 15000);
+refresh(); refreshStreak(); refreshMe(); refreshBadges();
+setInterval(() => { refresh(); refreshMe(); refreshBadges(); }, 15000);
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
