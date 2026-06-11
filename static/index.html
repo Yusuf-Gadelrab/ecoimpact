@@ -16,9 +16,9 @@ body { background:var(--bg); color:var(--text);
   font:15px/1.5 -apple-system, system-ui, sans-serif; overflow:hidden; }
 
 #map { position:fixed; inset:0; z-index:0; background:#0a120e; }
-/* dark map treatment */
-.leaflet-tile { filter:brightness(.65) saturate(.7) hue-rotate(120deg) contrast(1.05); }
 .leaflet-container { background:#0a120e; }
+/* subtle green cast over the dark basemap so it matches the brand */
+.leaflet-tile { filter:saturate(.85) hue-rotate(40deg) brightness(.95); }
 
 /* floating glass sidebar */
 aside {
@@ -193,13 +193,14 @@ ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13
   <div class="hint">Tap the map to <b>report trash</b>. Tap a red pin → <b>I cleaned this</b> to
     claim the impact. ⚠️ Hazard pins are report-only. Figures are EPA/DOE estimates.</div>
 </aside>
-<div class="attrib">© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors</div>
+<div class="attrib">© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · © <a href="https://carto.com/attributions">CARTO</a></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const map = L.map('map', { zoomControl:false }).setView([37.3352, -121.8811], 15);
 L.control.zoom({ position:'bottomleft' }).addTo(map);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'' }).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  { attribution:'', subdomains:'abcd', maxZoom:20 }).addTo(map);
 
 const $ = id => document.getElementById(id);
 const user = () => $('user').value.trim() || 'anonymous';
