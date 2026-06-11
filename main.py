@@ -159,30 +159,98 @@ def streak(user: str):
     return {"user": user, "streak_days": n, "active_today": n > 0}
 
 
+def _leaderboard_map(c: sqlite3.Connection) -> dict[str, float]:
+    """Returns {user: total_points} across all cleanups and actions."""
+    per_user: dict[str, float] = {}
+    for row in c.execute("SELECT category, cleaned_by FROM reports WHERE status='cleaned'"):
+        per_user[row["cleaned_by"]] = per_user.get(row["cleaned_by"], 0) + TRASH_IMPACT[row["category"]][2]
+    for row in c.execute("SELECT user, type FROM actions"):
+        per_user[row["user"]] = per_user.get(row["user"], 0) + ACTION_IMPACT[row["type"]][2]
+    return per_user
+
+
 @app.get("/api/impact")
 def impact():
-    waste = co2 = points = 0.0
-    per_user: dict[str, float] = {}
+    waste = co2 = 0.0
     with db() as c:
-        for row in c.execute("SELECT category, cleaned_by FROM reports WHERE status='cleaned'"):
-            w, cg, p = TRASH_IMPACT[row["category"]]
-            waste, co2, points = waste + w, co2 + cg, points + p
-            per_user[row["cleaned_by"]] = per_user.get(row["cleaned_by"], 0) + p
-        for row in c.execute("SELECT user, type FROM actions"):
-            w, cg, p = ACTION_IMPACT[row["type"]]
-            waste, co2, points = waste + w, co2 + cg, points + p
-            per_user[row["user"]] = per_user.get(row["user"], 0) + p
+        for row in c.execute("SELECT category FROM reports WHERE status='cleaned'"):
+            w, cg, _ = TRASH_IMPACT[row["category"]]
+            waste += w; co2 += cg
+        for row in c.execute("SELECT type FROM actions"):
+            w, cg, _ = ACTION_IMPACT[row["type"]]
+            waste += w; co2 += cg
         open_count = c.execute("SELECT COUNT(*) FROM reports WHERE status='open'").fetchone()[0]
         cleaned_count = c.execute("SELECT COUNT(*) FROM reports WHERE status='cleaned'").fetchone()[0]
+        per_user = _leaderboard_map(c)
     leaderboard = sorted(per_user.items(), key=lambda kv: kv[1], reverse=True)[:10]
     return {
         "kg_waste_diverted": round(waste, 2),
         "kg_co2e_avoided": round(co2, 2),
-        "points": int(points),
+        "points": int(sum(per_user.values())),
         "world_fixed_pct": round(min(100.0, 100.0 * co2 / WORLD_FIXED_CAP), 1),
         "open_reports": open_count,
         "cleaned_reports": cleaned_count,
         "leaderboard": [{"user": u, "points": int(p)} for u, p in leaderboard],
+    }
+
+
+@app.get("/api/users/{user}/impact")
+def user_impact(user: str):
+    week_cutoff = time.time() - 7 * 86400
+    waste = co2 = pts = 0.0
+    cleanups = reports_filed = actions_logged = 0
+    week_co2 = 0.0
+    week_cleanups = week_actions = 0
+
+    with db() as c:
+        for row in c.execute(
+            "SELECT category, cleaned_at FROM reports WHERE status='cleaned' AND cleaned_by=?",
+            (user,),
+        ):
+            w, cg, p = TRASH_IMPACT[row["category"]]
+            waste += w; co2 += cg; pts += p
+            cleanups += 1
+            if row["cleaned_at"] and row["cleaned_at"] >= week_cutoff:
+                week_co2 += cg
+                week_cleanups += 1
+
+        reports_filed = c.execute(
+            "SELECT COUNT(*) FROM reports WHERE reporter=?", (user,)
+        ).fetchone()[0]
+
+        for row in c.execute(
+            "SELECT type, created_at FROM actions WHERE user=?", (user,)
+        ):
+            w, cg, p = ACTION_IMPACT[row["type"]]
+            waste += w; co2 += cg; pts += p
+            actions_logged += 1
+            if row["created_at"] >= week_cutoff:
+                week_co2 += cg
+                week_actions += 1
+
+        lb = _leaderboard_map(c)
+
+    rank = None
+    if pts > 0:
+        for i, (u, _) in enumerate(sorted(lb.items(), key=lambda kv: kv[1], reverse=True), 1):
+            if u == user:
+                rank = i
+                break
+
+    return {
+        "user": user,
+        "points": int(pts),
+        "kg_waste_diverted": round(waste, 2),
+        "kg_co2e_avoided": round(co2, 2),
+        "cleanups": cleanups,
+        "reports_filed": reports_filed,
+        "actions_logged": actions_logged,
+        "rank": rank,
+        "week": {
+            "kg_co2e_avoided": round(week_co2, 2),
+            "cleanups": week_cleanups,
+            "actions_logged": week_actions,
+        },
     }
 
 

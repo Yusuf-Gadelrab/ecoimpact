@@ -199,6 +199,15 @@ ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13
   <h2>You</h2>
   <input id="user" placeholder="your name" />
 
+  <h2>Your impact</h2>
+  <div class="stats" id="me-stats" style="display:none">
+    <div class="stat"><b id="me-pts">0</b><span>points · rank <i id="me-rank">—</i></span></div>
+    <div class="stat"><b id="me-co2">0</b><span>kg CO₂e avoided</span></div>
+    <div class="stat"><b id="me-cleanups">0</b><span>pins cleaned</span></div>
+    <div class="stat"><b id="me-week">0</b><span>kg CO₂e this week</span></div>
+  </div>
+  <div class="hint" id="me-recap" style="display:none"></div>
+
   <h2>Log an action</h2>
   <div class="actions">
     <button data-a="lights_off"><span>💡 Turned the lights off</span><span class="gain">+0.12 kg</span></button>
@@ -228,7 +237,7 @@ const markers = L.layerGroup().addTo(map);
 const CATS = { litter:'Litter', bag:'Trash bag', plastic:'Plastic', ewaste:'E-waste',
                hazard:'Hazard (report only)' };
 $('user').value = localStorage.ecoName || '';
-$('user').addEventListener('change', () => { localStorage.ecoName = user(); refreshStreak(); });
+$('user').addEventListener('change', () => { localStorage.ecoName = user(); refreshStreak(); refreshMe(); });
 
 async function api(path, opts) {
   const r = await fetch(path, opts ? { method:'POST',
@@ -295,6 +304,27 @@ async function refreshStreak() {
     (s.active_today ? '' : ' <span class="dim">(do one thing today!)</span>');
 }
 
+async function refreshMe() {
+  if (user() === 'anonymous') {
+    $('me-stats').style.display = 'none';
+    $('me-recap').style.display = 'none';
+    return;
+  }
+  const d = await api(`/api/users/${encodeURIComponent(user())}/impact`);
+  $('me-stats').style.display = '';
+  countTo('me-pts', d.points);
+  countTo('me-co2', d.kg_co2e_avoided, 1);
+  countTo('me-cleanups', d.cleanups);
+  countTo('me-week', d.week.kg_co2e_avoided, 1);
+  $('me-rank').textContent = d.rank != null ? '#' + d.rank : '—';
+  if (d.week.actions_logged + d.week.cleanups > 0) {
+    $('me-recap').style.display = '';
+    $('me-recap').innerHTML = `This week: <b>${d.week.kg_co2e_avoided.toFixed(1)} kg CO₂e</b> avoided · ${d.week.cleanups} cleanups · ${d.week.actions_logged} actions. Keep the streak.`;
+  } else {
+    $('me-recap').style.display = 'none';
+  }
+}
+
 function toast(html) {
   const el = document.createElement('div');
   el.className = 'toast'; el.innerHTML = html;
@@ -329,7 +359,7 @@ window.cleanIt = async (id) => {
     await api(`/api/reports/${id}/clean`, { user: user() });
     map.closePopup(); confetti();
     toast('🌍 <b>+impact!</b> pin cleaned — the world thanks you');
-    refresh(); refreshStreak();
+    refresh(); refreshStreak(); refreshMe();
   } catch (e) { toast('⚠ ' + e.message); }
 };
 
@@ -354,11 +384,11 @@ document.querySelectorAll('.actions button').forEach(b =>
   b.addEventListener('click', async () => {
     const res = await api('/api/actions', { user: user(), type: b.dataset.a });
     toast(`✨ logged — <b>+${res.kg_co2e || res.kg_waste} kg</b> · +${res.points} pts`);
-    refresh(); refreshStreak();
+    refresh(); refreshStreak(); refreshMe();
   }));
 
-refresh(); refreshStreak();
-setInterval(refresh, 15000);
+refresh(); refreshStreak(); refreshMe();
+setInterval(() => { refresh(); refreshMe(); }, 15000);
 </script>
 </body>
 </html>

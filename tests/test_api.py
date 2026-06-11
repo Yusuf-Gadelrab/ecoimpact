@@ -66,6 +66,57 @@ def test_streak(tmp_path):
     assert c.get("/api/users/anas/streak").json()["streak_days"] == 1
 
 
+def test_user_impact_empty(tmp_path):
+    c = fresh_client(tmp_path)
+    r = c.get("/api/users/ghost/impact")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["points"] == 0
+    assert d["kg_waste_diverted"] == 0.0
+    assert d["kg_co2e_avoided"] == 0.0
+    assert d["cleanups"] == 0
+    assert d["reports_filed"] == 0
+    assert d["actions_logged"] == 0
+    assert d["rank"] is None
+    assert d["week"]["cleanups"] == 0
+    assert d["week"]["actions_logged"] == 0
+
+
+def test_user_impact_counts(tmp_path):
+    c = fresh_client(tmp_path)
+    rep = c.post("/api/reports", json={"lat": 37.3, "lng": -121.9,
+                                       "category": "bag", "reporter": "alice"}).json()
+    c.post(f"/api/reports/{rep['id']}/clean", json={"user": "bob"})
+    c.post("/api/actions", json={"user": "bob", "type": "bike_commute"})
+    c.post("/api/actions", json={"user": "bob", "type": "lights_off"})
+
+    lb = c.get("/api/impact").json()["leaderboard"]
+    bob_lb_pts = next(e["points"] for e in lb if e["user"] == "bob")
+
+    b = c.get("/api/users/bob/impact").json()
+    assert b["points"] == bob_lb_pts
+    assert b["cleanups"] == 1
+    assert b["actions_logged"] == 2
+    assert b["rank"] == 1
+
+    a = c.get("/api/users/alice/impact").json()
+    assert a["reports_filed"] == 1
+    assert a["cleanups"] == 0
+
+
+def test_user_impact_week(tmp_path):
+    c = fresh_client(tmp_path)
+    rep = c.post("/api/reports", json={"lat": 37.3, "lng": -121.9,
+                                       "category": "plastic", "reporter": "yusuf"}).json()
+    c.post(f"/api/reports/{rep['id']}/clean", json={"user": "yusuf"})
+    c.post("/api/actions", json={"user": "yusuf", "type": "bike_commute"})
+
+    d = c.get("/api/users/yusuf/impact").json()
+    assert d["week"]["cleanups"] == 1
+    assert d["week"]["actions_logged"] == 1
+    assert d["week"]["kg_co2e_avoided"] > 0
+
+
 def test_bad_inputs(tmp_path):
     c = fresh_client(tmp_path)
     assert c.post("/api/reports", json={"lat": 95, "lng": 0, "category": "bag"}).status_code == 422
