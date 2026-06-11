@@ -389,6 +389,18 @@ document.querySelectorAll('.actions button').forEach(b =>
 
 refresh(); refreshStreak(); refreshMe();
 setInterval(() => { refresh(); refreshMe(); }, 15000);
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(e => console.error('SW failed', e));
+  });
+}
+window.addEventListener('offline', () => {
+  toast('⚠ <b>Offline Mode</b> — map and reports are cached.');
+});
+window.addEventListener('online', () => {
+  toast('🌐 <b>Online</b> — back connected.');
+});
 </script>
 </body>
 </html>
