@@ -55,6 +55,17 @@ def test_actions_credit_co2(tmp_path):
     assert imp["world_fixed_pct"] > 0
 
 
+def test_streak(tmp_path):
+    c = fresh_client(tmp_path)
+    assert c.get("/api/users/yusuf/streak").json()["streak_days"] == 0
+    c.post("/api/actions", json={"user": "yusuf", "type": "lights_off"})
+    s = c.get("/api/users/yusuf/streak").json()
+    assert s["streak_days"] == 1 and s["active_today"] is True
+    rep = c.post("/api/reports", json={"lat": 37.3, "lng": -121.9, "category": "litter"}).json()
+    c.post(f"/api/reports/{rep['id']}/clean", json={"user": "anas"})
+    assert c.get("/api/users/anas/streak").json()["streak_days"] == 1
+
+
 def test_bad_inputs(tmp_path):
     c = fresh_client(tmp_path)
     assert c.post("/api/reports", json={"lat": 95, "lng": 0, "category": "bag"}).status_code == 422

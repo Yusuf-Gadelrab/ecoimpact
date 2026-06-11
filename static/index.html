@@ -6,85 +6,208 @@
 <title>EcoImpact — fix the world, see the proof</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-  :root { --bg:#0e1512; --card:#16201b; --green:#3ddc84; --text:#e7f0ea; --dim:#8aa395; }
-  * { box-sizing:border-box; margin:0; }
-  body { background:var(--bg); color:var(--text); font:15px/1.45 -apple-system,system-ui,sans-serif; }
-  #app { display:grid; grid-template-columns: 1fr 340px; height:100vh; }
-  #map { height:100%; }
-  aside { padding:16px; overflow-y:auto; background:var(--card); border-left:1px solid #233129; }
-  h1 { font-size:20px; margin-bottom:2px; } h1 span{color:var(--green);}
-  .dim { color:var(--dim); font-size:13px; }
-  .meter { margin:14px 0 6px; background:#0b110e; border-radius:10px; height:22px; overflow:hidden; }
-  .meter > div { height:100%; background:linear-gradient(90deg,#1e7a4c,var(--green)); width:0%;
-                 transition:width .8s; }
-  .stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0; }
-  .stat { background:#0b110e; border-radius:10px; padding:10px; }
-  .stat b { font-size:18px; color:var(--green); display:block; }
-  .actions button, #namebox input {
-    width:100%; margin-top:6px; padding:9px 10px; border:0; border-radius:8px; cursor:pointer;
-    background:#1d2c24; color:var(--text); font-size:14px; text-align:left;
-  }
-  .actions button:hover { background:#26392f; }
-  ol { margin:8px 0 0 18px; } li{ margin:2px 0; }
-  h2 { font-size:14px; margin-top:18px; color:var(--dim); text-transform:uppercase;
-       letter-spacing:.06em; }
-  .hint { background:#13241b; border:1px solid #1f4632; border-radius:8px; padding:8px 10px;
-          margin-top:10px; font-size:13px; }
-  .popup button { margin-top:6px; padding:6px 10px; border:0; border-radius:6px;
-                  background:#3ddc84; cursor:pointer; font-weight:600; }
-  .popup select, .popup input { width:100%; margin-top:4px; padding:5px; border-radius:6px;
-                  border:1px solid #ccc; }
+:root {
+  --bg:#070d0a; --glass:rgba(16,28,22,.72); --line:rgba(61,220,132,.16);
+  --green:#3ddc84; --green-hi:#7df2b0; --teal:#2bb3a3; --text:#eafff2; --dim:#7da08c;
+}
+* { box-sizing:border-box; margin:0; }
+html,body { height:100%; }
+body { background:var(--bg); color:var(--text);
+  font:15px/1.5 -apple-system, system-ui, sans-serif; overflow:hidden; }
+
+#map { position:fixed; inset:0; z-index:0; background:#0a120e; }
+/* dark map treatment */
+.leaflet-tile { filter:brightness(.65) saturate(.7) hue-rotate(120deg) contrast(1.05); }
+.leaflet-container { background:#0a120e; }
+
+/* floating glass sidebar */
+aside {
+  position:fixed; top:16px; right:16px; bottom:16px; width:352px; z-index:1000;
+  background:var(--glass); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+  border:1px solid var(--line); border-radius:22px; padding:20px;
+  overflow-y:auto; box-shadow:0 24px 70px rgba(0,0,0,.6);
+  animation:slidein .6s cubic-bezier(.2,.9,.3,1) both;
+}
+@keyframes slidein { from { opacity:0; transform:translateX(40px); } }
+aside::-webkit-scrollbar { width:0; }
+
+h1 { font-size:22px; font-weight:800; letter-spacing:-.02em; }
+h1 span {
+  background:linear-gradient(100deg,var(--teal),var(--green),var(--green-hi),var(--green));
+  background-size:200% auto; -webkit-background-clip:text; background-clip:text; color:transparent;
+  animation:shimmer 4s linear infinite;
+}
+@keyframes shimmer { to { background-position:200% center; } }
+.dim { color:var(--dim); font-size:13px; }
+
+/* world-fixed ring */
+.ring-wrap { display:flex; align-items:center; gap:16px; margin:18px 0 6px; }
+.ring { position:relative; width:108px; height:108px; flex:none; }
+.ring svg { transform:rotate(-90deg); }
+.ring .track { stroke:rgba(61,220,132,.12); }
+.ring .fill { stroke:url(#g); stroke-linecap:round; transition:stroke-dashoffset 1.2s cubic-bezier(.3,.8,.3,1);
+  filter:drop-shadow(0 0 6px rgba(61,220,132,.6)); }
+.ring .num { position:absolute; inset:0; display:grid; place-items:center; }
+.ring .num b { font-size:24px; }
+.ring .num small { display:block; text-align:center; font-size:9px; letter-spacing:.1em;
+  color:var(--dim); text-transform:uppercase; }
+.ring-side .big { font-size:15px; font-weight:700; }
+.ring-side .dim { margin-top:2px; }
+#streak { margin-top:8px; font-size:13px; }
+#streak b { color:#ffb347; }
+
+.stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:16px 0; }
+.stat { background:rgba(8,16,12,.6); border:1px solid var(--line); border-radius:14px;
+  padding:10px 12px; transition:transform .2s; }
+.stat:hover { transform:translateY(-2px); }
+.stat b { font-size:19px; color:var(--green); display:block; font-variant-numeric:tabular-nums; }
+.stat span { font-size:12px; color:var(--dim); }
+
+h2 { font-size:11px; margin:18px 0 8px; color:var(--dim); text-transform:uppercase;
+  letter-spacing:.14em; }
+#user { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line);
+  background:rgba(8,16,12,.6); color:var(--text); font-size:14px; transition:border-color .2s; }
+#user:focus { outline:none; border-color:var(--green); }
+
+.actions { display:grid; gap:8px; }
+.actions button {
+  display:flex; justify-content:space-between; align-items:center; width:100%;
+  padding:11px 13px; border:1px solid var(--line); border-radius:12px; cursor:pointer;
+  background:rgba(8,16,12,.6); color:var(--text); font-size:14px;
+  transition:transform .15s, border-color .2s, background .2s;
+}
+.actions button:hover { transform:translateX(3px); border-color:var(--green);
+  background:rgba(61,220,132,.08); }
+.actions button:active { transform:scale(.97); }
+.actions .gain { color:var(--green); font-size:12px; font-weight:700; }
+
+ol { margin:4px 0 0 0; padding:0; list-style:none; counter-reset:rank; }
+ol li { display:flex; align-items:center; gap:10px; padding:7px 4px;
+  border-bottom:1px solid rgba(61,220,132,.07); animation:rise .4s ease both; }
+ol li::before { counter-increment:rank; content:counter(rank);
+  width:22px; height:22px; border-radius:50%; display:grid; place-items:center; flex:none;
+  background:rgba(61,220,132,.12); color:var(--green); font-size:11px; font-weight:800; }
+ol li:first-child::before { background:linear-gradient(120deg,#ffd700,#ffb347); color:#1a1303; }
+ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13px;
+  font-variant-numeric:tabular-nums; }
+@keyframes rise { from { opacity:0; transform:translateY(8px); } }
+
+.hint { background:rgba(61,220,132,.07); border:1px solid var(--line); border-radius:12px;
+  padding:9px 12px; margin-top:16px; font-size:12.5px; color:var(--dim); }
+.hint b { color:var(--green); }
+
+/* pulsing open-trash markers */
+.pin { position:relative; }
+.pin .core { width:14px; height:14px; border-radius:50%; border:2px solid #fff3; }
+.pin.open .core { background:#ff5c4d; box-shadow:0 0 10px rgba(255,92,77,.8); }
+.pin.hazard .core { background:#ffb347; box-shadow:0 0 10px rgba(255,179,71,.8); }
+.pin.cleaned .core { background:var(--green); box-shadow:0 0 10px rgba(61,220,132,.8); }
+.pin.open::after, .pin.hazard::after {
+  content:""; position:absolute; inset:-7px; border-radius:50%;
+  border:2px solid currentColor; opacity:.7; animation:ping 1.8s ease-out infinite;
+}
+.pin.open { color:#ff5c4d; } .pin.hazard { color:#ffb347; }
+@keyframes ping { from { transform:scale(.5); opacity:.8; } to { transform:scale(1.6); opacity:0; } }
+
+/* popups */
+.leaflet-popup-content-wrapper { background:var(--glass); backdrop-filter:blur(14px);
+  color:var(--text); border:1px solid var(--line); border-radius:14px; }
+.leaflet-popup-tip { background:rgba(16,28,22,.9); }
+.popup select, .popup input { width:100%; margin-top:6px; padding:7px 9px; border-radius:9px;
+  border:1px solid var(--line); background:rgba(8,16,12,.8); color:var(--text); font-size:13px; }
+.popup button { margin-top:8px; width:100%; padding:8px 12px; border:0; border-radius:9px;
+  background:linear-gradient(120deg,var(--teal),var(--green)); color:#06130c; font-weight:800;
+  cursor:pointer; transition:transform .15s; }
+.popup button:hover { transform:translateY(-1px); }
+
+/* toasts */
+#toasts { position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+  z-index:2000; display:flex; flex-direction:column; gap:8px; align-items:center; }
+.toast { background:var(--glass); backdrop-filter:blur(14px); border:1px solid var(--line);
+  color:var(--text); border-radius:999px; padding:10px 20px; font-size:14px;
+  box-shadow:0 12px 40px rgba(0,0,0,.5); animation:toast 3.2s ease both; }
+.toast b { color:var(--green); }
+@keyframes toast {
+  0% { opacity:0; transform:translateY(24px) scale(.9); }
+  10%,82% { opacity:1; transform:none; }
+  100% { opacity:0; transform:translateY(-12px) scale(.96); }
+}
+
+#confetti { position:fixed; inset:0; pointer-events:none; z-index:1500; }
+.attrib { position:fixed; left:8px; bottom:6px; z-index:1000; font-size:11px; color:#5e7a6b; }
+.attrib a { color:#7da08c; }
+
+@media (max-width:720px) {
+  aside { left:10px; right:10px; top:auto; bottom:10px; width:auto; max-height:52vh; }
+}
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="map"></div>
-  <aside>
-    <h1>Eco<span>Impact</span></h1>
-    <div class="dim">how much you fixed the world</div>
+<div id="map"></div>
+<canvas id="confetti"></canvas>
+<div id="toasts"></div>
 
-    <div class="meter"><div id="bar"></div></div>
-    <div class="dim"><span id="pct">0</span>% world fixed</div>
+<aside>
+  <h1>Eco<span>Impact</span></h1>
+  <div class="dim">how much you fixed the world</div>
 
-    <div class="stats">
-      <div class="stat"><b id="waste">0</b>kg waste diverted</div>
-      <div class="stat"><b id="co2">0</b>kg CO₂e avoided</div>
-      <div class="stat"><b id="open">0</b>open trash pins</div>
-      <div class="stat"><b id="cleaned">0</b>cleaned up</div>
+  <div class="ring-wrap">
+    <div class="ring">
+      <svg width="108" height="108">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#2bb3a3"/><stop offset="100%" stop-color="#3ddc84"/>
+        </linearGradient></defs>
+        <circle class="track" cx="54" cy="54" r="46" fill="none" stroke-width="9"/>
+        <circle class="fill" id="ringfill" cx="54" cy="54" r="46" fill="none" stroke-width="9"
+                stroke-dasharray="289" stroke-dashoffset="289"/>
+      </svg>
+      <div class="num"><div><b id="pct">0</b><small>world fixed</small></div></div>
     </div>
-
-    <div id="namebox">
-      <h2>You</h2>
-      <input id="user" placeholder="your name" />
+    <div class="ring-side">
+      <div class="big">Every pin you clear<br>moves this ring.</div>
+      <div id="streak" class="dim">🔥 streak: <b>—</b></div>
     </div>
+  </div>
 
-    <h2>Log an action</h2>
-    <div class="actions">
-      <button data-a="lights_off">💡 Turned the lights off (+0.12 kg CO₂e)</button>
-      <button data-a="bike_commute">🚲 Biked instead of drove (+2.0 kg CO₂e)</button>
-      <button data-a="shorter_shower">🚿 Shorter shower (+0.3 kg CO₂e)</button>
-      <button data-a="reusable_bottle">🍶 Reusable bottle (+0.08 kg CO₂e)</button>
-    </div>
+  <div class="stats">
+    <div class="stat"><b id="waste">0</b><span>kg waste diverted</span></div>
+    <div class="stat"><b id="co2">0</b><span>kg CO₂e avoided</span></div>
+    <div class="stat"><b id="open">0</b><span>open trash pins</span></div>
+    <div class="stat"><b id="cleaned">0</b><span>cleaned up</span></div>
+  </div>
 
-    <h2>Leaderboard</h2>
-    <ol id="board"></ol>
+  <h2>You</h2>
+  <input id="user" placeholder="your name" />
 
-    <div class="hint">Tap the map to report trash. Tap a red pin and hit
-      <b>I cleaned this</b> to claim the impact. ⚠️ Hazardous waste is report-only.</div>
-    <div class="dim" style="margin-top:10px">Impact figures are estimates (EPA/DOE averages).</div>
-  </aside>
-</div>
+  <h2>Log an action</h2>
+  <div class="actions">
+    <button data-a="lights_off"><span>💡 Turned the lights off</span><span class="gain">+0.12 kg</span></button>
+    <button data-a="bike_commute"><span>🚲 Biked instead of drove</span><span class="gain">+2.0 kg</span></button>
+    <button data-a="shorter_shower"><span>🚿 Shorter shower</span><span class="gain">+0.3 kg</span></button>
+    <button data-a="reusable_bottle"><span>🍶 Reusable bottle</span><span class="gain">+0.08 kg</span></button>
+  </div>
+
+  <h2>Leaderboard</h2>
+  <ol id="board"></ol>
+
+  <div class="hint">Tap the map to <b>report trash</b>. Tap a red pin → <b>I cleaned this</b> to
+    claim the impact. ⚠️ Hazard pins are report-only. Figures are EPA/DOE estimates.</div>
+</aside>
+<div class="attrib">© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const map = L.map('map').setView([37.3352, -121.8811], 15); // SJSU
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-  { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+const map = L.map('map', { zoomControl:false }).setView([37.3352, -121.8811], 15);
+L.control.zoom({ position:'bottomleft' }).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'' }).addTo(map);
 
-const user = () => document.getElementById('user').value.trim() || 'anonymous';
+const $ = id => document.getElementById(id);
+const user = () => $('user').value.trim() || 'anonymous';
 const markers = L.layerGroup().addTo(map);
 const CATS = { litter:'Litter', bag:'Trash bag', plastic:'Plastic', ewaste:'E-waste',
                hazard:'Hazard (report only)' };
+$('user').value = localStorage.ecoName || '';
+$('user').addEventListener('change', () => { localStorage.ecoName = user(); refreshStreak(); });
 
 async function api(path, opts) {
   const r = await fetch(path, opts ? { method:'POST',
@@ -93,58 +216,121 @@ async function api(path, opts) {
   return r.json();
 }
 
+/* animated count-up numbers */
+const shown = {};
+function countTo(id, target, decimals=0) {
+  const start = shown[id] ?? 0; shown[id] = target;
+  if (start === target) { $(id).textContent = target.toFixed(decimals); return; }
+  const t0 = performance.now(), dur = 900;
+  (function tick(t) {
+    const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    $(id).textContent = (start + (target - start) * e).toFixed(decimals);
+    if (k < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+function pinIcon(rep) {
+  const cls = rep.status === 'cleaned' ? 'cleaned' : (rep.category === 'hazard' ? 'hazard' : 'open');
+  return L.divIcon({ className:'', html:`<div class="pin ${cls}"><div class="core"></div></div>`,
+                     iconSize:[14,14], iconAnchor:[7,7] });
+}
+
 async function refresh() {
   const [reports, impact] = await Promise.all([api('/api/reports'), api('/api/impact')]);
   markers.clearLayers();
   for (const rep of reports) {
     const cleaned = rep.status === 'cleaned';
-    const m = L.circleMarker([rep.lat, rep.lng], {
-      radius: 9, color: cleaned ? '#3ddc84' : (rep.category==='hazard' ? '#f5a623' : '#e74c3c'),
-      fillOpacity: .8 }).addTo(markers);
+    const m = L.marker([rep.lat, rep.lng], { icon: pinIcon(rep) }).addTo(markers);
     let html = `<div class="popup"><b>${CATS[rep.category]||rep.category}</b>` +
-               (rep.note ? `<br>${rep.note}` : '') +
-               `<br><small>${cleaned ? 'cleaned by '+rep.cleaned_by : 'reported by '+rep.reporter}</small>`;
+      (rep.note ? `<br>${rep.note}` : '') +
+      `<br><small class="dim">${cleaned ? '✅ cleaned by '+rep.cleaned_by : 'reported by '+rep.reporter}</small>`;
     if (!cleaned && rep.category !== 'hazard')
-      html += `<br><button onclick="cleanIt(${rep.id})">I cleaned this ✅</button>`;
+      html += `<button onclick="cleanIt(${rep.id})">I cleaned this ✅</button>`;
     m.bindPopup(html + '</div>');
   }
-  document.getElementById('bar').style.width = impact.world_fixed_pct + '%';
-  document.getElementById('pct').textContent = impact.world_fixed_pct;
-  document.getElementById('waste').textContent = impact.kg_waste_diverted;
-  document.getElementById('co2').textContent = impact.kg_co2e_avoided;
-  document.getElementById('open').textContent = impact.open_reports;
-  document.getElementById('cleaned').textContent = impact.cleaned_reports;
-  document.getElementById('board').innerHTML =
-    impact.leaderboard.map(e => `<li><b>${e.user}</b> — ${e.points} pts</li>`).join('') ||
-    '<li class="dim">no heroes yet</li>';
+  const off = 289 - 289 * impact.world_fixed_pct / 100;
+  $('ringfill').style.strokeDashoffset = off;
+  countTo('pct', impact.world_fixed_pct, impact.world_fixed_pct % 1 ? 1 : 0);
+  countTo('waste', impact.kg_waste_diverted, 1);
+  countTo('co2', impact.kg_co2e_avoided, 1);
+  countTo('open', impact.open_reports);
+  countTo('cleaned', impact.cleaned_reports);
+  $('board').innerHTML =
+    impact.leaderboard.map((e,i) =>
+      `<li style="animation-delay:${.06*i}s"><b>${e.user}</b><span class="pts">${e.points} pts</span></li>`).join('')
+    || '<li class="dim" style="border:0">no heroes yet — be the first</li>';
+}
+
+async function refreshStreak() {
+  if (user() === 'anonymous') { $('streak').innerHTML = '🔥 streak: <b>—</b>'; return; }
+  const s = await api(`/api/users/${encodeURIComponent(user())}/streak`);
+  $('streak').innerHTML = `🔥 streak: <b>${s.streak_days} day${s.streak_days===1?'':'s'}</b>` +
+    (s.active_today ? '' : ' <span class="dim">(do one thing today!)</span>');
+}
+
+function toast(html) {
+  const el = document.createElement('div');
+  el.className = 'toast'; el.innerHTML = html;
+  $('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3300);
+}
+
+/* confetti burst */
+const cv = $('confetti'), cx = cv.getContext('2d');
+function confetti() {
+  cv.width = innerWidth; cv.height = innerHeight;
+  const parts = Array.from({length:120}, () => ({
+    x: innerWidth/2 + (Math.random()-0.5)*120, y: innerHeight*0.4,
+    vx: (Math.random()-0.5)*14, vy: -Math.random()*13 - 4,
+    s: 4+Math.random()*5, r: Math.random()*Math.PI,
+    c: ['#3ddc84','#7df2b0','#2bb3a3','#ffd700','#ffffff'][Math.random()*5|0],
+  }));
+  const t0 = performance.now();
+  (function tick(t) {
+    cx.clearRect(0,0,cv.width,cv.height);
+    for (const p of parts) {
+      p.x += p.vx; p.y += p.vy; p.vy += 0.45; p.r += 0.1;
+      cx.save(); cx.translate(p.x,p.y); cx.rotate(p.r); cx.fillStyle = p.c;
+      cx.fillRect(-p.s/2,-p.s/2,p.s,p.s); cx.restore();
+    }
+    if (t - t0 < 1800) requestAnimationFrame(tick); else cx.clearRect(0,0,cv.width,cv.height);
+  })(t0);
 }
 
 window.cleanIt = async (id) => {
-  try { await api(`/api/reports/${id}/clean`, { user: user() }); refresh(); }
-  catch (e) { alert(e.message); }
+  try {
+    await api(`/api/reports/${id}/clean`, { user: user() });
+    map.closePopup(); confetti();
+    toast('🌍 <b>+impact!</b> pin cleaned — the world thanks you');
+    refresh(); refreshStreak();
+  } catch (e) { toast('⚠ ' + e.message); }
 };
 
 map.on('click', (ev) => {
   const opts = Object.entries(CATS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
-  const html = `<div class="popup"><b>Report trash here?</b>
-    <select id="cat">${opts}</select>
-    <input id="note" placeholder="note (optional)" maxlength="280">
-    <button onclick="submitReport(${ev.latlng.lat},${ev.latlng.lng})">Report 📍</button></div>`;
-  L.popup().setLatLng(ev.latlng).setContent(html).openOn(map);
+  L.popup().setLatLng(ev.latlng).setContent(
+    `<div class="popup"><b>Report trash here?</b>
+     <select id="cat">${opts}</select>
+     <input id="note" placeholder="note (optional)" maxlength="280">
+     <button onclick="submitReport(${ev.latlng.lat},${ev.latlng.lng})">Drop the pin 📍</button></div>`
+  ).openOn(map);
 });
 
 window.submitReport = async (lat, lng) => {
-  await api('/api/reports', { lat, lng,
-    category: document.getElementById('cat').value,
-    note: document.getElementById('note').value, reporter: user() });
-  map.closePopup(); refresh();
+  await api('/api/reports', { lat, lng, category: $('cat').value,
+    note: $('note').value, reporter: user() });
+  map.closePopup(); toast('📍 reported — someone will earn points cleaning this');
+  refresh();
 };
 
 document.querySelectorAll('.actions button').forEach(b =>
-  b.addEventListener('click', async () => { await api('/api/actions',
-    { user: user(), type: b.dataset.a }); refresh(); }));
+  b.addEventListener('click', async () => {
+    const res = await api('/api/actions', { user: user(), type: b.dataset.a });
+    toast(`✨ logged — <b>+${res.kg_co2e || res.kg_waste} kg</b> · +${res.points} pts`);
+    refresh(); refreshStreak();
+  }));
 
-refresh();
+refresh(); refreshStreak();
 setInterval(refresh, 15000);
 </script>
 </body>

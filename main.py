@@ -140,6 +140,25 @@ def log_action(a: ActionIn):
     return {"ok": True, "type": a.type, "kg_waste": waste, "kg_co2e": co2, "points": pts}
 
 
+@app.get("/api/users/{user}/streak")
+def streak(user: str):
+    """Consecutive days (ending today) with at least one logged action or cleanup."""
+    days: set[str] = set()
+    with db() as c:
+        for (ts,) in c.execute("SELECT created_at FROM actions WHERE user=?", (user,)):
+            days.add(time.strftime("%Y-%m-%d", time.localtime(ts)))
+        for (ts,) in c.execute(
+                "SELECT cleaned_at FROM reports WHERE cleaned_by=? AND cleaned_at IS NOT NULL",
+                (user,)):
+            days.add(time.strftime("%Y-%m-%d", time.localtime(ts)))
+    n = 0
+    t = time.time()
+    while time.strftime("%Y-%m-%d", time.localtime(t)) in days:
+        n += 1
+        t -= 86400
+    return {"user": user, "streak_days": n, "active_today": n > 0}
+
+
 @app.get("/api/impact")
 def impact():
     waste = co2 = points = 0.0
