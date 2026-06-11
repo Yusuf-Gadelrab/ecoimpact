@@ -20,3 +20,7 @@ uv run pytest tests/
 - **Safety:** `hazard` category is report-only — the API refuses cleanup claims on it.
 - Impact factors are EPA/DOE-average estimates (lights-off kWh, bike-vs-drive per mile,
   shower water heating, single-use bottle production).
+
+## License
+© 2026 Yusuf Gadelrab. All rights reserved. Source is public for portfolio and evaluation
+purposes only: no license is granted to copy, modify, or redistribute this code.
