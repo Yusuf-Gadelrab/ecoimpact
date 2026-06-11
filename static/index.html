@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EcoImpact — fix the world, see the proof</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root { --bg:#0e1512; --card:#16201b; --green:#3ddc84; --text:#e7f0ea; --dim:#8aa395; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:15px/1.45 -apple-system,system-ui,sans-serif; }
+  #app { display:grid; grid-template-columns: 1fr 340px; height:100vh; }
+  #map { height:100%; }
+  aside { padding:16px; overflow-y:auto; background:var(--card); border-left:1px solid #233129; }
+  h1 { font-size:20px; margin-bottom:2px; } h1 span{color:var(--green);}
+  .dim { color:var(--dim); font-size:13px; }
+  .meter { margin:14px 0 6px; background:#0b110e; border-radius:10px; height:22px; overflow:hidden; }
+  .meter > div { height:100%; background:linear-gradient(90deg,#1e7a4c,var(--green)); width:0%;
+                 transition:width .8s; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0; }
+  .stat { background:#0b110e; border-radius:10px; padding:10px; }
+  .stat b { font-size:18px; color:var(--green); display:block; }
+  .actions button, #namebox input {
+    width:100%; margin-top:6px; padding:9px 10px; border:0; border-radius:8px; cursor:pointer;
+    background:#1d2c24; color:var(--text); font-size:14px; text-align:left;
+  }
+  .actions button:hover { background:#26392f; }
+  ol { margin:8px 0 0 18px; } li{ margin:2px 0; }
+  h2 { font-size:14px; margin-top:18px; color:var(--dim); text-transform:uppercase;
+       letter-spacing:.06em; }
+  .hint { background:#13241b; border:1px solid #1f4632; border-radius:8px; padding:8px 10px;
+          margin-top:10px; font-size:13px; }
+  .popup button { margin-top:6px; padding:6px 10px; border:0; border-radius:6px;
+                  background:#3ddc84; cursor:pointer; font-weight:600; }
+  .popup select, .popup input { width:100%; margin-top:4px; padding:5px; border-radius:6px;
+                  border:1px solid #ccc; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <aside>
+    <h1>Eco<span>Impact</span></h1>
+    <div class="dim">how much you fixed the world</div>
+
+    <div class="meter"><div id="bar"></div></div>
+    <div class="dim"><span id="pct">0</span>% world fixed</div>
+
+    <div class="stats">
+      <div class="stat"><b id="waste">0</b>kg waste diverted</div>
+      <div class="stat"><b id="co2">0</b>kg CO₂e avoided</div>
+      <div class="stat"><b id="open">0</b>open trash pins</div>
+      <div class="stat"><b id="cleaned">0</b>cleaned up</div>
+    </div>
+
+    <div id="namebox">
+      <h2>You</h2>
+      <input id="user" placeholder="your name" />
+    </div>
+
+    <h2>Log an action</h2>
+    <div class="actions">
+      <button data-a="lights_off">💡 Turned the lights off (+0.12 kg CO₂e)</button>
+      <button data-a="bike_commute">🚲 Biked instead of drove (+2.0 kg CO₂e)</button>
+      <button data-a="shorter_shower">🚿 Shorter shower (+0.3 kg CO₂e)</button>
+      <button data-a="reusable_bottle">🍶 Reusable bottle (+0.08 kg CO₂e)</button>
+    </div>
+
+    <h2>Leaderboard</h2>
+    <ol id="board"></ol>
+
+    <div class="hint">Tap the map to report trash. Tap a red pin and hit
+      <b>I cleaned this</b> to claim the impact. ⚠️ Hazardous waste is report-only.</div>
+    <div class="dim" style="margin-top:10px">Impact figures are estimates (EPA/DOE averages).</div>
+  </aside>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('map').setView([37.3352, -121.8811], 15); // SJSU
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+
+const user = () => document.getElementById('user').value.trim() || 'anonymous';
+const markers = L.layerGroup().addTo(map);
+const CATS = { litter:'Litter', bag:'Trash bag', plastic:'Plastic', ewaste:'E-waste',
+               hazard:'Hazard (report only)' };
+
+async function api(path, opts) {
+  const r = await fetch(path, opts ? { method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify(opts) } : undefined);
+  if (!r.ok) throw new Error((await r.json()).detail || r.status);
+  return r.json();
+}
+
+async function refresh() {
+  const [reports, impact] = await Promise.all([api('/api/reports'), api('/api/impact')]);
+  markers.clearLayers();
+  for (const rep of reports) {
+    const cleaned = rep.status === 'cleaned';
+    const m = L.circleMarker([rep.lat, rep.lng], {
+      radius: 9, color: cleaned ? '#3ddc84' : (rep.category==='hazard' ? '#f5a623' : '#e74c3c'),
+      fillOpacity: .8 }).addTo(markers);
+    let html = `<div class="popup"><b>${CATS[rep.category]||rep.category}</b>` +
+               (rep.note ? `<br>${rep.note}` : '') +
+               `<br><small>${cleaned ? 'cleaned by '+rep.cleaned_by : 'reported by '+rep.reporter}</small>`;
+    if (!cleaned && rep.category !== 'hazard')
+      html += `<br><button onclick="cleanIt(${rep.id})">I cleaned this ✅</button>`;
+    m.bindPopup(html + '</div>');
+  }
+  document.getElementById('bar').style.width = impact.world_fixed_pct + '%';
+  document.getElementById('pct').textContent = impact.world_fixed_pct;
+  document.getElementById('waste').textContent = impact.kg_waste_diverted;
+  document.getElementById('co2').textContent = impact.kg_co2e_avoided;
+  document.getElementById('open').textContent = impact.open_reports;
+  document.getElementById('cleaned').textContent = impact.cleaned_reports;
+  document.getElementById('board').innerHTML =
+    impact.leaderboard.map(e => `<li><b>${e.user}</b> — ${e.points} pts</li>`).join('') ||
+    '<li class="dim">no heroes yet</li>';
+}
+
+window.cleanIt = async (id) => {
+  try { await api(`/api/reports/${id}/clean`, { user: user() }); refresh(); }
+  catch (e) { alert(e.message); }
+};
+
+map.on('click', (ev) => {
+  const opts = Object.entries(CATS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
+  const html = `<div class="popup"><b>Report trash here?</b>
+    <select id="cat">${opts}</select>
+    <input id="note" placeholder="note (optional)" maxlength="280">
+    <button onclick="submitReport(${ev.latlng.lat},${ev.latlng.lng})">Report 📍</button></div>`;
+  L.popup().setLatLng(ev.latlng).setContent(html).openOn(map);
+});
+
+window.submitReport = async (lat, lng) => {
+  await api('/api/reports', { lat, lng,
+    category: document.getElementById('cat').value,
+    note: document.getElementById('note').value, reporter: user() });
+  map.closePopup(); refresh();
+};
+
+document.querySelectorAll('.actions button').forEach(b =>
+  b.addEventListener('click', async () => { await api('/api/actions',
+    { user: user(), type: b.dataset.a }); refresh(); }));
+
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>
