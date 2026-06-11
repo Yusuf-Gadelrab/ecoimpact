@@ -31,6 +31,14 @@ aside {
 @keyframes slidein { from { opacity:0; transform:translateX(40px); } }
 aside::-webkit-scrollbar { width:0; }
 
+/* staggered entrance for sidebar content */
+aside > * { animation:rise .5s cubic-bezier(.2,.9,.3,1) both; }
+aside > *:nth-child(1) { animation-delay:.15s; } aside > *:nth-child(2) { animation-delay:.2s; }
+aside > *:nth-child(3) { animation-delay:.25s; } aside > *:nth-child(4) { animation-delay:.3s; }
+aside > *:nth-child(5) { animation-delay:.35s; } aside > *:nth-child(6) { animation-delay:.4s; }
+aside > *:nth-child(7) { animation-delay:.45s; } aside > *:nth-child(8) { animation-delay:.5s; }
+aside > *:nth-child(n+9) { animation-delay:.55s; }
+
 h1 { font-size:22px; font-weight:800; letter-spacing:-.02em; }
 h1 span {
   background:linear-gradient(100deg,var(--teal),var(--green),var(--green-hi),var(--green));
@@ -58,8 +66,14 @@ h1 span {
 
 .stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:16px 0; }
 .stat { background:rgba(8,16,12,.6); border:1px solid var(--line); border-radius:14px;
-  padding:10px 12px; transition:transform .2s; }
-.stat:hover { transform:translateY(-2px); }
+  padding:10px 12px; transition:transform .2s, border-color .25s, box-shadow .25s; }
+.stat:hover { transform:translateY(-2px); border-color:var(--green);
+  box-shadow:0 6px 18px rgba(61,220,132,.12); }
+.stat.bump { animation:bump .7s cubic-bezier(.3,.8,.3,1); }
+@keyframes bump {
+  30% { border-color:var(--green); box-shadow:0 0 18px rgba(61,220,132,.35);
+        transform:translateY(-2px) scale(1.03); }
+}
 .stat b { font-size:19px; color:var(--green); display:block; font-variant-numeric:tabular-nums; }
 .stat span { font-size:12px; color:var(--dim); }
 
@@ -97,7 +111,9 @@ ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13
 .hint b { color:var(--green); }
 
 /* pulsing open-trash markers */
+.pin.new { animation:pop .45s cubic-bezier(.2,.9,.3,1.4) both; }
 .pin { position:relative; }
+@keyframes pop { from { opacity:0; transform:scale(.3); } }
 .pin .core { width:14px; height:14px; border-radius:50%; border:2px solid #fff3; }
 .pin.open .core { background:#ff5c4d; box-shadow:0 0 10px rgba(255,92,77,.8); }
 .pin.hazard .core { background:#ffb347; box-shadow:0 0 10px rgba(255,179,71,.8); }
@@ -139,6 +155,10 @@ ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13
 
 @media (max-width:720px) {
   aside { left:10px; right:10px; top:auto; bottom:10px; width:auto; max-height:52vh; }
+}
+@media (prefers-reduced-motion:reduce) {
+  *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important;
+    transition-duration:.01ms !important; }
 }
 </style>
 </head>
@@ -222,6 +242,8 @@ const shown = {};
 function countTo(id, target, decimals=0) {
   const start = shown[id] ?? 0; shown[id] = target;
   if (start === target) { $(id).textContent = target.toFixed(decimals); return; }
+  const card = $(id).closest('.stat');
+  if (card) { card.classList.remove('bump'); void card.offsetWidth; card.classList.add('bump'); }
   const t0 = performance.now(), dur = 900;
   (function tick(t) {
     const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
@@ -230,9 +252,13 @@ function countTo(id, target, decimals=0) {
   })(t0);
 }
 
+let seenPins = new Set();
 function pinIcon(rep) {
   const cls = rep.status === 'cleaned' ? 'cleaned' : (rep.category === 'hazard' ? 'hazard' : 'open');
-  return L.divIcon({ className:'', html:`<div class="pin ${cls}"><div class="core"></div></div>`,
+  const key = rep.id + ':' + rep.status;
+  const fresh = !seenPins.has(key) ? ' new' : '';
+  seenPins.add(key);
+  return L.divIcon({ className:'', html:`<div class="pin ${cls}${fresh}"><div class="core"></div></div>`,
                      iconSize:[14,14], iconAnchor:[7,7] });
 }
 
