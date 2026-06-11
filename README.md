@@ -18,5 +18,5 @@ uv run pytest tests/
 ## Design notes
 - **Privacy:** user GPS is never collected; trash coords rounded to 4 decimals (~11 m).
 - **Safety:** `hazard` category is report-only — the API refuses cleanup claims on it.
-- Impact factors are EPA/DOE-average estimates, documented in `../docs/PLAN.md` (which also has
-  the growth phases, scaling path, and the full compliance checklist).
+- Impact factors are EPA/DOE-average estimates (lights-off kWh, bike-vs-drive per mile,
+  shower water heating, single-use bottle production).
