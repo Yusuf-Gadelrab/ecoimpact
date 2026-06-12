@@ -116,6 +116,12 @@ def moderate_report(report_id: int, approved: bool = Form(...)):
         c.execute("UPDATE reports SET status = ? WHERE id = ?", (status, report_id))
     return {"ok": True}
 
+
+@app.post("/api/reports", status_code=201)
+def create_report(lat: float = Form(...), lng: float = Form(...),
+                  category: str = Form(...), note: str = Form(""),
+                  reporter: str = Form("anonymous"),
+                  photo: UploadFile | None = File(None)):
     if category not in TRASH_IMPACT:
         raise HTTPException(422, f"category must be one of {sorted(TRASH_IMPACT)}")
         
