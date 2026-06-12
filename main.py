@@ -64,7 +64,35 @@ def init_db() -> None:
             id INTEGER PRIMARY KEY,
             user TEXT NOT NULL, type TEXT NOT NULL, created_at REAL NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS users(
+            user TEXT PRIMARY KEY, team TEXT
+        );
         """)
+
+# ... existing code ...
+
+@app.post("/api/users/{user}/team")
+def set_team(user: str, body: dict):
+    team = str(body.get("team", "")).strip()[:24]
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO users(user, team) VALUES(?,?)", (user, team))
+    return {"ok": True}
+
+@app.get("/api/teams")
+def list_teams():
+    with db() as c:
+        points = _leaderboard_map(c)
+        per_team = {}
+        for user, pts in points.items():
+            team = c.execute("SELECT team FROM users WHERE user=?", (user,)).fetchone()
+            t = team["team"] if team and team["team"] else "Individual"
+            per_team.setdefault(t, {"points": 0, "members": set()})
+            per_team[t]["points"] += pts
+            per_team[t]["members"].add(user)
+        
+        results = [{"team": k, "points": int(v["points"]), "members": len(v["members"])}
+                   for k, v in per_team.items()]
+        return sorted(results, key=lambda x: x["points"], reverse=True)
 
 
 init_db()

@@ -206,6 +206,10 @@ ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13
 
   <h2>You</h2>
   <input id="user" placeholder="your name" />
+  <div style="display:flex; gap:8px; margin-top:8px;">
+    <input id="team" placeholder="join a team" style="flex:1" />
+    <button class="btn" onclick="joinTeam()" style="border-color:var(--green); color:var(--green)">Join</button>
+  </div>
 
   <h2>Your impact</h2>
   <div class="stats" id="me-stats" style="display:none">
@@ -229,6 +233,9 @@ ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13
 
   <h2>Leaderboard</h2>
   <ol id="board"></ol>
+
+  <h2>Teams</h2>
+  <ol id="team-board"></ol>
 
   <div class="hint">Tap the map to <b>report trash</b>. Tap a red pin → <b>I cleaned this</b> to
     claim the impact. ⚠️ Hazard pins are report-only. Figures are EPA/DOE estimates.</div>
@@ -336,35 +343,27 @@ async function refreshMe() {
     $('me-recap').style.display = 'none';
   }
 }
-
 async function refreshBadges() {
-  if (user() === 'anonymous') {
-    $('badges-h2').style.display = 'none';
-    $('badges-container').style.display = 'none';
-    return;
-  }
-  const badges = await api(`/api/users/${encodeURIComponent(user())}/badges`);
-  $('badges-h2').style.display = 'block';
-  $('badges-container').style.display = 'flex';
-  
-  let html = '';
-  for (const b of badges) {
-    let cls = 'badge';
-    if (b.earned) {
-      cls += ' earned';
-      if (!earnedBadges.has(b.id) && earnedBadges.size > 0) {
-        cls += ' new-earn';
-        toast(`🏅 badge earned: <b>${b.name}</b>`);
-      }
-      earnedBadges.add(b.id);
-    }
-    const title = b.earned ? b.name : b.earned_hint;
-    html += `<div class="${cls}" title="${title}">${b.emoji}</div>`;
-  }
-  $('badges-container').innerHTML = html;
+  // ... (existing)
+}
+
+async function joinTeam() {
+  const team = $('team').value.trim();
+  if (!team) return;
+  await api(`/api/users/${encodeURIComponent(user())}/team`, { team });
+  $('team').value = '';
+  refreshTeams();
+}
+
+async function refreshTeams() {
+  const teams = await api('/api/teams');
+  $('team-board').innerHTML = teams.map((t, i) =>
+    `<li style="animation-delay:${.06*i}s"><b>${t.team}</b><span class="pts">${t.points} pts (${t.members} mem)</span></li>`).join('');
 }
 
 function toast(html) {
+// ...
+
   const el = document.createElement('div');
   el.className = 'toast'; el.innerHTML = html;
   $('toasts').appendChild(el);
@@ -426,8 +425,8 @@ document.querySelectorAll('.actions button').forEach(b =>
     refresh(); refreshStreak(); refreshMe(); refreshBadges();
   }));
 
-refresh(); refreshStreak(); refreshMe(); refreshBadges();
-setInterval(() => { refresh(); refreshMe(); refreshBadges(); }, 15000);
+refresh(); refreshStreak(); refreshMe(); refreshBadges(); refreshTeams();
+setInterval(() => { refresh(); refreshMe(); refreshBadges(); refreshTeams(); }, 15000);
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
