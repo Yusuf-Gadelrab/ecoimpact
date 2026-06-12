@@ -21,12 +21,17 @@ def get_team_leaderboard(db_path):
             user_points[row["user"]] = user_points.get(row["user"], 0) + pts
             
         # Group by team
+        # 1. Get all team members
+        for row in c.execute("SELECT user, team FROM users"):
+            team = row["team"] if row["team"] else "Individual"
+            teams.setdefault(team, {"points": 0, "members": set()})
+            teams[team]["members"].add(row["user"])
+            
+        # 2. Add points
         for user, pts in user_points.items():
             team_row = c.execute("SELECT team FROM users WHERE user=?", (user,)).fetchone()
             team = team_row["team"] if team_row and team_row["team"] else "Individual"
-            teams.setdefault(team, {"points": 0, "members": set()})
             teams[team]["points"] += pts
-            teams[team]["members"].add(user)
             
         return [{"team": k, "points": int(v["points"]), "members": len(v["members"])}
                 for k, v in teams.items()]
