@@ -4,18 +4,23 @@ Privacy by design: only trash coordinates are stored (rounded to ~11 m); user GP
 collected. Impact factors are estimates from EPA/DOE averages — see docs/PLAN.md.
 """
 
+import shutil
 import sqlite3
 import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Form, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+import shutil
+from leaderboard_logic import get_team_leaderboard
 
 DB_PATH = Path(__file__).parent / "ecoimpact.db"
 STATIC = Path(__file__).parent / "static"
+UPLOADS_DIR = STATIC / "uploads"
+UPLOADS_DIR.mkdir(exist_ok=True)
 
 # (kg waste diverted, kg CO2e avoided, points) per action
 TRASH_IMPACT = {
@@ -30,6 +35,9 @@ ACTION_IMPACT = {
     "bike_commute": (0.0, 2.0, 12),
     "shorter_shower": (0.0, 0.3, 4),
     "reusable_bottle": (0.02, 0.08, 2),
+    "challenge_daily": (0.0, 0.0, 10),
+    "challenge_co2": (0.0, 0.0, 50),
+    "challenge_sweeper": (0.0, 0.0, 100),
 }
 WORLD_FIXED_CAP = 500.0  # kg CO2e at which the playful meter reads 100%
 
@@ -68,6 +76,11 @@ def init_db() -> None:
             user TEXT PRIMARY KEY, team TEXT
         );
         """)
+        try:
+            c.execute("ALTER TABLE reports ADD COLUMN photo_report TEXT")
+            c.execute("ALTER TABLE reports ADD COLUMN photo_clean TEXT")
+        except sqlite3.OperationalError:
+            pass
 
 # ... existing code ...
 
@@ -80,34 +93,10 @@ def set_team(user: str, body: dict):
 
 @app.get("/api/teams")
 def list_teams():
-    with db() as c:
-        points = _leaderboard_map(c)
-        per_team = {}
-        for user, pts in points.items():
-            team = c.execute("SELECT team FROM users WHERE user=?", (user,)).fetchone()
-            t = team["team"] if team and team["team"] else "Individual"
-            per_team.setdefault(t, {"points": 0, "members": set()})
-            per_team[t]["points"] += pts
-            per_team[t]["members"].add(user)
-        
-        results = [{"team": k, "points": int(v["points"]), "members": len(v["members"])}
-                   for k, v in per_team.items()]
-        return sorted(results, key=lambda x: x["points"], reverse=True)
+    return sorted(get_team_leaderboard(DB_PATH), key=lambda x: x["points"], reverse=True)
 
 
 init_db()
-
-
-class ReportIn(BaseModel):
-    lat: float = Field(ge=-90, le=90)
-    lng: float = Field(ge=-180, le=180)
-    category: str
-    note: str = ""
-    reporter: str = "anonymous"
-
-
-class CleanIn(BaseModel):
-    user: str = "anonymous"
 
 
 class ActionIn(BaseModel):
@@ -121,13 +110,23 @@ def index():
 
 
 @app.post("/api/reports", status_code=201)
-def create_report(r: ReportIn):
-    if r.category not in TRASH_IMPACT:
+def create_report(lat: float = Form(...), lng: float = Form(...),
+                  category: str = Form(...), note: str = Form(""),
+                  reporter: str = Form("anonymous"),
+                  photo: UploadFile | None = File(None)):
+    if category not in TRASH_IMPACT:
         raise HTTPException(422, f"category must be one of {sorted(TRASH_IMPACT)}")
+        
+    photo_path = None
+    if photo and photo.filename:
+        photo_path = f"report_{time.time()}_{photo.filename.replace(' ', '_')}"
+        with open(UPLOADS_DIR / photo_path, "wb") as f:
+            shutil.copyfileobj(photo.file, f)
+
     with db() as c:
         cur = c.execute(
-            "INSERT INTO reports(lat,lng,category,note,reporter,created_at) VALUES(?,?,?,?,?,?)",
-            (round(r.lat, 4), round(r.lng, 4), r.category, r.note[:280], r.reporter[:40], time.time()),
+            "INSERT INTO reports(lat,lng,category,note,reporter,created_at,photo_report) VALUES(?,?,?,?,?,?,?)",
+            (round(lat, 4), round(lng, 4), category, note[:280], reporter[:40], time.time(), photo_path),
         )
         assert cur.lastrowid is not None
         return get_report_row(c, cur.lastrowid)
@@ -145,7 +144,7 @@ def list_reports(status: str | None = None):
 
 
 @app.post("/api/reports/{rid}/clean")
-def clean_report(rid: int, body: CleanIn):
+def clean_report(rid: int, user: str = Form("anonymous"), photo: UploadFile | None = File(None)):
     with db() as c:
         row = c.execute("SELECT * FROM reports WHERE id=?", (rid,)).fetchone()
         if not row:
@@ -154,8 +153,15 @@ def clean_report(rid: int, body: CleanIn):
             raise HTTPException(409, "already cleaned")
         if row["category"] == "hazard":
             raise HTTPException(403, "hazardous waste is report-only — don't touch it")
-        c.execute("UPDATE reports SET status='cleaned', cleaned_by=?, cleaned_at=? WHERE id=?",
-                  (body.user[:40], time.time(), rid))
+            
+        photo_path = None
+        if photo and photo.filename:
+            photo_path = f"clean_{time.time()}_{photo.filename.replace(' ', '_')}"
+            with open(UPLOADS_DIR / photo_path, "wb") as f:
+                shutil.copyfileobj(photo.file, f)
+
+        c.execute("UPDATE reports SET status='cleaned', cleaned_by=?, cleaned_at=?, photo_clean=? WHERE id=?",
+                  (user[:40], time.time(), photo_path, rid))
         return get_report_row(c, rid)
 
 
@@ -311,3 +317,85 @@ def user_badges(user: str):
 
 def get_report_row(c: sqlite3.Connection, rid: int) -> dict:
     return dict(c.execute("SELECT * FROM reports WHERE id=?", (rid,)).fetchone())
+
+
+@app.get("/api/users/{user}/challenges")
+def get_user_challenges(user: str):
+    today_start = time.time() - (time.time() % 86400)
+    week_start = time.time() - 7 * 86400
+    
+    with db() as c:
+        daily_claimed = c.execute("SELECT COUNT(*) FROM actions WHERE user=? AND type='challenge_daily' AND created_at >= ?", 
+                                  (user, today_start)).fetchone()[0] > 0
+        co2_claimed = c.execute("SELECT COUNT(*) FROM actions WHERE user=? AND type='challenge_co2' AND created_at >= ?", 
+                                (user, week_start)).fetchone()[0] > 0
+        sweeper_claimed = c.execute("SELECT COUNT(*) FROM actions WHERE user=? AND type='challenge_sweeper' AND created_at >= ?", 
+                                    (user, week_start)).fetchone()[0] > 0
+                                    
+    return {
+        "daily": {"claimed": daily_claimed},
+        "co2": {"claimed": co2_claimed},
+        "sweeper": {"claimed": sweeper_claimed}
+    }
+
+
+@app.post("/api/challenges/claim")
+def claim_challenge(body: dict):
+    user = str(body.get("user", "")).strip()[:40]
+    ctype = str(body.get("challenge", ""))
+    
+    if ctype not in ["daily", "co2", "sweeper"]:
+        raise HTTPException(400, "Invalid challenge type")
+        
+    action_type = f"challenge_{ctype}"
+    
+    with db() as c:
+        # For daily, check today
+        if ctype == "daily":
+            today_start = time.time() - (time.time() % 86400)
+            cnt = c.execute("SELECT COUNT(*) FROM actions WHERE user=? AND type=? AND created_at >= ?", 
+                            (user, action_type, today_start)).fetchone()[0]
+            if cnt > 0:
+                raise HTTPException(409, "Daily challenge reward already claimed today")
+                
+            action_cnt = c.execute("SELECT COUNT(*) FROM actions WHERE user=? AND type NOT LIKE 'challenge_%' AND created_at >= ?",
+                                   (user, today_start)).fetchone()[0]
+            cleanup_cnt = c.execute("SELECT COUNT(*) FROM reports WHERE cleaned_by=? AND status='cleaned' AND cleaned_at >= ?",
+                                    (user, today_start)).fetchone()[0]
+            if action_cnt + cleanup_cnt == 0:
+                raise HTTPException(400, "Daily challenge is not completed yet")
+                
+        elif ctype == "co2":
+            week_start = time.time() - 7 * 86400
+            cnt = c.execute("SELECT COUNT(*) FROM actions WHERE user=? AND type=? AND created_at >= ?", 
+                            (user, action_type, week_start)).fetchone()[0]
+            if cnt > 0:
+                raise HTTPException(409, "Weekly CO2 challenge reward already claimed this week")
+                
+            co2 = 0.0
+            for row in c.execute("SELECT category FROM reports WHERE status='cleaned' AND cleaned_by=? AND cleaned_at >= ?",
+                                 (user, week_start)):
+                co2 += TRASH_IMPACT[row["category"]][1]
+            for row in c.execute("SELECT type FROM actions WHERE user=? AND created_at >= ?",
+                                 (user, week_start)):
+                co2 += ACTION_IMPACT[row["type"]][1]
+                
+            if co2 < 5.0:
+                raise HTTPException(400, "Weekly CO2 challenge is not completed yet")
+                
+        elif ctype == "sweeper":
+            week_start = time.time() - 7 * 86400
+            cnt = c.execute("SELECT COUNT(*) FROM actions WHERE user=? AND type=? AND created_at >= ?", 
+                            (user, action_type, week_start)).fetchone()[0]
+            if cnt > 0:
+                raise HTTPException(409, "Weekly Sweeper challenge reward already claimed this week")
+                
+            cleanups = c.execute("SELECT COUNT(*) FROM reports WHERE cleaned_by=? AND status='cleaned' AND cleaned_at >= ?",
+                                 (user, week_start)).fetchone()[0]
+            if cleanups < 3:
+                raise HTTPException(400, "Weekly Sweeper challenge is not completed yet")
+                
+        c.execute("INSERT INTO actions(user, type, created_at) VALUES(?,?,?)",
+                  (user, action_type, time.time()))
+                  
+    return {"ok": True, "reward_points": ACTION_IMPACT[action_type][2]}

@@ -5,6 +5,7 @@ description = "Trash map + quantified 'world fixed' impact meter."
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
+    "python-multipart>=0.0.32",
     "uvicorn>=0.30",
 ]
 

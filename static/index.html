@@ -78,6 +78,29 @@ h1 span {
 .stat b { font-size:19px; color:var(--green); display:block; font-variant-numeric:tabular-nums; }
 .stat span { font-size:12px; color:var(--dim); }
 
+.btn {
+  padding:8px 14px; border:1px solid var(--line); border-radius:12px;
+  background:rgba(8,16,12,.6); color:var(--text); font-size:13px; font-weight:600;
+  cursor:pointer; transition:all .2s; display:inline-flex; align-items:center; justify-content:center;
+}
+.btn:hover { border-color:var(--green); background:rgba(61,220,132,.08); transform:translateY(-1px); }
+.btn:active { transform:scale(.97); }
+.btn.active { background:var(--green); color:#070d0a; border-color:var(--green); font-weight:700; }
+
+.challenges-list { display:grid; gap:10px; }
+.challenge-card { background:rgba(8,16,12,.4); border:1px solid var(--line); border-radius:12px; padding:12px; transition: border-color 0.2s; }
+.challenge-card.completed { border-color:var(--green); background:rgba(61,220,132,.04); }
+.challenge-card .header { display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:700; }
+.challenge-card .desc { font-size:11.5px; color:var(--dim); margin-top:2px; }
+.challenge-card .bar-wrap { height:6px; background:rgba(255,255,255,.07); border-radius:3px; margin-top:8px; overflow:hidden; }
+.challenge-card .bar { height:100%; background:linear-gradient(90deg, var(--teal), var(--green)); border-radius:3px; width:0%; transition:width .4s ease; }
+.challenge-card.completed .bar { background:var(--green); }
+.challenge-card .reward-row { display:flex; justify-content:space-between; align-items:center; margin-top:6px; }
+.challenge-card .reward { font-size:11px; color:var(--green); font-weight:800; text-transform:uppercase; letter-spacing:0.05em; }
+.challenge-card .claim-btn { padding:4px 8px; font-size:11px; border-radius:6px; border:1px solid var(--green); background:transparent; color:var(--green); cursor:pointer; font-weight:700; transition:all .15s; }
+.challenge-card .claim-btn:hover { background:var(--green); color:#070d0a; }
+.challenge-card .claim-btn:disabled { border-color:var(--line); color:var(--dim); cursor:not-allowed; background:transparent; }
+
 h2 { font-size:11px; margin:18px 0 8px; color:var(--dim); text-transform:uppercase;
   letter-spacing:.14em; }
 #user { width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line);
@@ -179,6 +202,11 @@ ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13
   <h1>Eco<span>Impact</span></h1>
   <div class="dim">how much you fixed the world</div>
 
+  <div class="map-modes" style="display:flex; gap:8px; margin:14px 0 6px;">
+    <button id="btn-normal" class="btn active" onclick="setMapMode('normal')">📍 Pins</button>
+    <button id="btn-heat" class="btn" onclick="setMapMode('heat')">🔥 Heatmap</button>
+  </div>
+
   <div class="ring-wrap">
     <div class="ring">
       <svg width="108" height="108">
@@ -223,6 +251,9 @@ ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13
   <h2 id="badges-h2" style="display:none">Badges</h2>
   <div class="badges" id="badges-container" style="display:none"></div>
 
+  <h2 id="challenges-h2" style="display:none">Challenges</h2>
+  <div class="challenges-list" id="challenges-container" style="display:none; margin-bottom:16px;"></div>
+
   <h2>Log an action</h2>
   <div class="actions">
     <button data-a="lights_off"><span>💡 Turned the lights off</span><span class="gain">+0.12 kg</span></button>
@@ -243,6 +274,7 @@ ol li .pts { margin-left:auto; color:var(--green); font-weight:700; font-size:13
 <div class="attrib">© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · © <a href="https://carto.com/attributions">CARTO</a></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script>
 const map = L.map('map', { zoomControl:false }).setView([37.3352, -121.8811], 15);
 L.control.zoom({ position:'bottomleft' }).addTo(map);
@@ -255,8 +287,44 @@ const markers = L.layerGroup().addTo(map);
 const CATS = { litter:'Litter', bag:'Trash bag', plastic:'Plastic', ewaste:'E-waste',
                hazard:'Hazard (report only)' };
 let earnedBadges = new Set();
+let currentMapMode = 'normal';
+let heatLayer = null;
+let latestReports = [];
+
 $('user').value = localStorage.ecoName || '';
 $('user').addEventListener('change', () => { localStorage.ecoName = user(); earnedBadges.clear(); refreshStreak(); refreshMe(); refreshBadges(); });
+
+function setMapMode(mode) {
+  if (currentMapMode === mode) return;
+  currentMapMode = mode;
+  $('btn-normal').classList.toggle('active', mode === 'normal');
+  $('btn-heat').classList.toggle('active', mode === 'heat');
+  updateMapLayers();
+}
+
+function updateMapLayers() {
+  if (currentMapMode === 'heat') {
+    map.removeLayer(markers);
+    const points = latestReports
+      .filter(r => r.status === 'open')
+      .map(r => [r.lat, r.lng, 1.0]);
+    if (heatLayer) {
+      map.removeLayer(heatLayer);
+    }
+    heatLayer = L.heatLayer(points, {
+      radius: 25,
+      blur: 15,
+      maxZoom: 17,
+      gradient: {0.4: 'blue', 0.6: 'lime', 0.8: 'yellow', 1.0: 'red'}
+    }).addTo(map);
+  } else {
+    if (heatLayer) {
+      map.removeLayer(heatLayer);
+      heatLayer = null;
+    }
+    markers.addTo(map);
+  }
+}
 
 async function api(path, opts) {
   const r = await fetch(path, opts ? { method:'POST',
@@ -292,15 +360,22 @@ function pinIcon(rep) {
 
 async function refresh() {
   const [reports, impact] = await Promise.all([api('/api/reports'), api('/api/impact')]);
+  latestReports = reports;
   markers.clearLayers();
   for (const rep of reports) {
     const cleaned = rep.status === 'cleaned';
     const m = L.marker([rep.lat, rep.lng], { icon: pinIcon(rep) }).addTo(markers);
     let html = `<div class="popup"><b>${CATS[rep.category]||rep.category}</b>` +
       (rep.note ? `<br>${rep.note}` : '') +
+      (rep.photo_report ? `<br><img src="/static/uploads/${rep.photo_report}" style="width:100%; border-radius:8px; margin-top:8px;">` : '') +
       `<br><small class="dim">${cleaned ? '✅ cleaned by '+rep.cleaned_by : 'reported by '+rep.reporter}</small>`;
+      
+    if (cleaned && rep.photo_clean) {
+      html += `<br><img src="/static/uploads/${rep.photo_clean}" style="width:100%; border-radius:8px; margin-top:8px;">`;
+    }
+    
     if (!cleaned && rep.category !== 'hazard')
-      html += `<button onclick="cleanIt(${rep.id})">I cleaned this ✅</button>`;
+      html += `<input id="clean-photo-${rep.id}" type="file" accept="image/*" capture="environment" style="margin-top:8px;"><button onclick="cleanIt(${rep.id})">I cleaned this ✅</button>`;
     m.bindPopup(html + '</div>');
   }
   const off = 289 - 289 * impact.world_fixed_pct / 100;
@@ -314,6 +389,7 @@ async function refresh() {
     impact.leaderboard.map((e,i) =>
       `<li style="animation-delay:${.06*i}s"><b>${e.user}</b><span class="pts">${e.points} pts</span></li>`).join('')
     || '<li class="dim" style="border:0">no heroes yet — be the first</li>';
+  updateMapLayers();
 }
 
 async function refreshStreak() {
@@ -327,24 +403,156 @@ async function refreshMe() {
   if (user() === 'anonymous') {
     $('me-stats').style.display = 'none';
     $('me-recap').style.display = 'none';
+    $('challenges-h2').style.display = 'none';
+    $('challenges-container').style.display = 'none';
     return;
   }
-  const d = await api(`/api/users/${encodeURIComponent(user())}/impact`);
-  $('me-stats').style.display = '';
-  countTo('me-pts', d.points);
-  countTo('me-co2', d.kg_co2e_avoided, 1);
-  countTo('me-cleanups', d.cleanups);
-  countTo('me-week', d.week.kg_co2e_avoided, 1);
-  $('me-rank').textContent = d.rank != null ? '#' + d.rank : '—';
-  if (d.week.actions_logged + d.week.cleanups > 0) {
-    $('me-recap').style.display = '';
-    $('me-recap').innerHTML = `This week: <b>${d.week.kg_co2e_avoided.toFixed(1)} kg CO₂e</b> avoided · ${d.week.cleanups} cleanups · ${d.week.actions_logged} actions. Keep the streak.`;
-  } else {
-    $('me-recap').style.display = 'none';
+  try {
+    const [d, s, c] = await Promise.all([
+      api(`/api/users/${encodeURIComponent(user())}/impact`),
+      api(`/api/users/${encodeURIComponent(user())}/streak`),
+      api(`/api/users/${encodeURIComponent(user())}/challenges`)
+    ]);
+    
+    $('me-stats').style.display = '';
+    countTo('me-pts', d.points);
+    countTo('me-co2', d.kg_co2e_avoided, 1);
+    countTo('me-cleanups', d.cleanups);
+    countTo('me-week', d.week.kg_co2e_avoided, 1);
+    $('me-rank').textContent = d.rank != null ? '#' + d.rank : '—';
+    
+    $('streak').innerHTML = `🔥 streak: <b>${s.streak_days} day${s.streak_days===1?'':'s'}</b>` +
+      (s.active_today ? '' : ' <span class="dim">(do one thing today!)</span>');
+      
+    if (d.week.actions_logged + d.week.cleanups > 0) {
+      $('me-recap').style.display = '';
+      $('me-recap').innerHTML = `This week: <b>${d.week.kg_co2e_avoided.toFixed(1)} kg CO₂e</b> avoided · ${d.week.cleanups} cleanups · ${d.week.actions_logged} actions. Keep the streak.`;
+    } else {
+      $('me-recap').style.display = 'none';
+    }
+    
+    renderChallenges(d, s, c);
+  } catch (e) {
+    console.error('Error in refreshMe:', e);
+  }
+}
+
+function renderChallenges(imp, streakData, claimStatus) {
+  $('challenges-h2').style.display = '';
+  $('challenges-container').style.display = 'grid';
+  
+  const activeToday = streakData.active_today ? 1 : 0;
+  
+  const challenges = [
+    {
+      id: "daily",
+      name: "Daily Green Habit",
+      desc: "Log any action or clean a pin today",
+      curr: activeToday,
+      target: 1,
+      reward: "+10 pts",
+      type: "qty"
+    },
+    {
+      id: "co2",
+      name: "Weekly CO₂ Target",
+      desc: "Avoid 5.0 kg of CO₂e emissions this week",
+      curr: imp.week.kg_co2e_avoided,
+      target: 5.0,
+      reward: "+50 pts",
+      type: "weight"
+    },
+    {
+      id: "sweeper",
+      name: "Trash Sweeper",
+      desc: "Clean up 3 open trash reports this week",
+      curr: imp.week.cleanups,
+      target: 3,
+      reward: "+100 pts",
+      type: "qty"
+    }
+  ];
+  
+  $('challenges-container').innerHTML = challenges.map(ch => {
+    const pct = Math.min(100, Math.round((ch.curr / ch.target) * 100));
+    const completed = ch.curr >= ch.target;
+    const claimed = claimStatus[ch.id]?.claimed;
+    const dispCurr = ch.type === 'weight' ? ch.curr.toFixed(1) : ch.curr;
+    const dispTarget = ch.type === 'weight' ? ch.target.toFixed(1) + ' kg' : ch.target;
+    
+    let btnText = "Claim Now";
+    let btnDisabled = !completed || claimed;
+    if (claimed) {
+      btnText = "Claimed ✓";
+    } else if (!completed) {
+      btnText = "In Progress";
+    }
+    
+    return `
+      <div class="challenge-card ${claimed ? 'completed' : ''}">
+        <div class="header">
+          <span>${ch.name} ${claimed ? '✅' : ''}</span>
+          <span style="font-size:12px; font-variant-numeric:tabular-nums">${dispCurr} / ${dispTarget}</span>
+        </div>
+        <div class="desc">${ch.desc}</div>
+        <div class="bar-wrap">
+          <div class="bar" style="width: ${pct}%"></div>
+        </div>
+        <div class="reward-row">
+          <span class="reward">🎁 Reward: ${ch.reward}</span>
+          <button class="claim-btn" ${btnDisabled ? 'disabled' : ''} onclick="claimChallenge('${ch.id}')">${btnText}</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function claimChallenge(id) {
+  try {
+    const res = await api('/api/challenges/claim', { user: user(), challenge: id });
+    toast(`🏆 <b>Challenge Completed!</b> +${res.reward_points} points added!`);
+    confetti();
+    refresh();
+    refreshMe();
+    refreshBadges();
+  } catch (e) {
+    toast(`⚠ ${e.message}`);
   }
 }
 async function refreshBadges() {
-  // ... (existing)
+  if (user() === 'anonymous') {
+    $('badges-h2').style.display = 'none';
+    $('badges-container').style.display = 'none';
+    return;
+  }
+  try {
+    const list = await api(`/api/users/${encodeURIComponent(user())}/badges`);
+    $('badges-h2').style.display = '';
+    $('badges-container').style.display = '';
+    let html = '';
+    let newlyEarned = false;
+    for (const b of list) {
+      const isEarned = b.earned;
+      const wasEarned = earnedBadges.has(b.id);
+      let cls = 'badge';
+      if (isEarned) {
+        cls += ' earned';
+        if (!wasEarned && earnedBadges.size > 0) {
+          cls += ' new-earn';
+          newlyEarned = true;
+          toast(`🏆 <b>Badge Unlocked!</b> ${b.emoji} <b>${b.name}</b>: ${b.earned_hint}`);
+        }
+        earnedBadges.add(b.id);
+      }
+      html += `<div class="${cls}" title="${b.name}: ${b.earned_hint}">${b.emoji}</div>`;
+    }
+    $('badges-container').innerHTML = html;
+    if (newlyEarned) {
+      confetti();
+    }
+  } catch (e) {
+    console.error('Error refreshing badges:', e);
+  }
 }
 
 async function joinTeam() {
@@ -394,7 +602,13 @@ function confetti() {
 
 window.cleanIt = async (id) => {
   try {
-    await api(`/api/reports/${id}/clean`, { user: user() });
+    const fd = new FormData();
+    fd.append('user', user());
+    const photoInput = $('clean-photo-' + id);
+    if (photoInput && photoInput.files[0]) fd.append('photo', photoInput.files[0]);
+    
+    const r = await fetch(`/api/reports/${id}/clean`, { method: 'POST', body: fd });
+    if (!r.ok) throw new Error((await r.json()).detail || r.status);
     map.closePopup(); confetti();
     toast('🌍 <b>+impact!</b> pin cleaned — the world thanks you');
     refresh(); refreshStreak(); refreshMe(); refreshBadges();
@@ -407,15 +621,26 @@ map.on('click', (ev) => {
     `<div class="popup"><b>Report trash here?</b>
      <select id="cat">${opts}</select>
      <input id="note" placeholder="note (optional)" maxlength="280">
+     <input id="photo" type="file" accept="image/*" capture="environment" style="margin-top:8px">
      <button onclick="submitReport(${ev.latlng.lat},${ev.latlng.lng})">Drop the pin 📍</button></div>`
   ).openOn(map);
 });
 
 window.submitReport = async (lat, lng) => {
-  await api('/api/reports', { lat, lng, category: $('cat').value,
-    note: $('note').value, reporter: user() });
-  map.closePopup(); toast('📍 reported — someone will earn points cleaning this');
-  refresh();
+  const fd = new FormData();
+  fd.append('lat', lat);
+  fd.append('lng', lng);
+  fd.append('category', $('cat').value);
+  fd.append('note', $('note').value);
+  fd.append('reporter', user());
+  if ($('photo').files[0]) fd.append('photo', $('photo').files[0]);
+
+  try {
+    const r = await fetch('/api/reports', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error((await r.json()).detail || r.status);
+    map.closePopup(); toast('📍 reported — someone will earn points cleaning this');
+    refresh(); refreshStreak(); refreshMe(); refreshBadges();
+  } catch (e) { toast('⚠ ' + e.message); }
 };
 
 document.querySelectorAll('.actions button').forEach(b =>
