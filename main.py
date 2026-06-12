@@ -120,15 +120,17 @@ def moderate_report(report_id: int, approved: bool = Form(...)):
         raise HTTPException(422, f"category must be one of {sorted(TRASH_IMPACT)}")
         
     photo_path = None
+    status = 'open'
     if photo and photo.filename:
         photo_path = f"report_{time.time()}_{photo.filename.replace(' ', '_')}"
         with open(UPLOADS_DIR / photo_path, "wb") as f:
             shutil.copyfileobj(photo.file, f)
+        status = 'pending' # Photos require moderation
 
     with db() as c:
         cur = c.execute(
-            "INSERT INTO reports(lat,lng,category,note,reporter,created_at,photo_report) VALUES(?,?,?,?,?,?,?)",
-            (round(lat, 4), round(lng, 4), category, note[:280], reporter[:40], time.time(), photo_path),
+            "INSERT INTO reports(lat,lng,category,note,reporter,created_at,photo_report,status) VALUES(?,?,?,?,?,?,?,?)",
+            (round(lat, 4), round(lng, 4), category, note[:280], reporter[:40], time.time(), photo_path, status),
         )
         assert cur.lastrowid is not None
         return get_report_row(c, cur.lastrowid)
