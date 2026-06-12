@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 DB_PATH = Path(__file__).parent / "ecoimpact.db"
@@ -33,6 +34,7 @@ ACTION_IMPACT = {
 WORLD_FIXED_CAP = 500.0  # kg CO2e at which the playful meter reads 100%
 
 app = FastAPI(title="EcoImpact")
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 @contextmanager

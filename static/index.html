@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>EcoImpact — fix the world, see the proof</title>
+<link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root {
@@ -430,7 +431,7 @@ setInterval(() => { refresh(); refreshMe(); refreshBadges(); }, 15000);
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(e => console.error('SW failed', e));
+    navigator.serviceWorker.register('/static/sw.js').catch(e => console.error('SW failed', e));
   });
 }
 window.addEventListener('offline', () => {
