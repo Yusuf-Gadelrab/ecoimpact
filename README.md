@@ -24,3 +24,14 @@ uv run pytest tests/
 ## License
 © 2026 Yusuf Gadelrab. All rights reserved. Source is public for portfolio and evaluation
 purposes only: no license is granted to copy, modify, or redistribute this code.
+
+---
+
+## About the author
+
+Built by **Yusuf Gadelrab** — computer science student at San José State University (BS Computer Science, expected May 2028), AI/ML builder, and co-author of two peer-reviewed SIGCSE Technical Symposium 2026 papers on computer science education ([DOI 10.1145/3770761.3777339](https://doi.org/10.1145/3770761.3777339)).
+
+- Portfolio: <https://yusuf-gadelrab.github.io/>
+- About / FAQ: <https://yusuf-gadelrab.github.io/about.html>
+- Guides: <https://yusuf-gadelrab.github.io/guides.html>
+- Contact: yusuf.gadelrab06@gmail.com
