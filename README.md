@@ -1,6 +1,8 @@
 # EcoImpact MVP
 
-Trash map + "world fixed" impact meter. FastAPI + SQLite + Leaflet/OpenStreetMap, fully local.
+EcoImpact is a local-first web app that lets people report litter on a shared map, claim cleanups,
+and log daily eco actions, then turns those actions into a quantified "world fixed" impact meter and
+leaderboard. Built with FastAPI, SQLite, and Leaflet/OpenStreetMap.
 
 ## Run
 ```bash
