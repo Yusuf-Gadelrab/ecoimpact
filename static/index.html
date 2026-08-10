@@ -4,7 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>EcoImpact — fix the world, see the proof</title>
+<meta name="description" content="EcoImpact is a local-first app for reporting litter on a map, claiming cleanups, and logging eco actions into a quantified impact meter and leaderboard.">
+<!-- This page is served by a local FastAPI instance (run.sh), not a public site, so it is
+     marked noindex rather than given canonical/OG tags that would point at a URL nothing serves.
+     The public landing page for this project is https://yusuf-gadelrab.github.io/ecoimpact.html -->
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzNkZGM4NCIgZD0iTTEyIDJDMCAyIDAgMjIgMTIgMjJTMjQgMjIgMTIgMiBtMCAyMGMtOS45IDAtOS45LTE4IDAtMTggOS45IDAgOS45IDE4IDAgMTh6Ii8+PC9zdmc+">
 <link rel="manifest" href="/static/manifest.webmanifest">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "EcoImpact",
+  "description": "Local-first web app for reporting litter on a shared map, claiming cleanups, and logging eco actions, tracked as a quantified impact meter and leaderboard.",
+  "applicationCategory": "LifestyleApplication",
+  "operatingSystem": "Runs locally via FastAPI + a browser",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "sameAs": [
+    "https://github.com/Yusuf-Gadelrab/ecoimpact",
+    "https://yusuf-gadelrab.github.io/ecoimpact.html"
+  ]
+}
+</script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root {
@@ -367,11 +388,11 @@ async function refresh() {
     const m = L.marker([rep.lat, rep.lng], { icon: pinIcon(rep) }).addTo(markers);
     let html = `<div class="popup"><b>${CATS[rep.category]||rep.category}</b>` +
       (rep.note ? `<br>${rep.note}` : '') +
-      (rep.photo_report ? `<br><img src="/static/uploads/${rep.photo_report}" style="width:100%; border-radius:8px; margin-top:8px;">` : '') +
+      (rep.photo_report ? `<br><img src="/static/uploads/${rep.photo_report}" alt="Photo of reported ${CATS[rep.category]||rep.category} litter" style="width:100%; border-radius:8px; margin-top:8px;">` : '') +
       `<br><small class="dim">${cleaned ? '✅ cleaned by '+rep.cleaned_by : 'reported by '+rep.reporter}</small>`;
       
     if (cleaned && rep.photo_clean) {
-      html += `<br><img src="/static/uploads/${rep.photo_clean}" style="width:100%; border-radius:8px; margin-top:8px;">`;
+      html += `<br><img src="/static/uploads/${rep.photo_clean}" alt="Photo of the cleaned-up spot" style="width:100%; border-radius:8px; margin-top:8px;">`;
     }
     
     if (!cleaned && rep.category !== 'hazard')
