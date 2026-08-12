@@ -100,7 +100,7 @@ Personal project, early stage. Single-file FastAPI backend, SQLite storage, no a
 
 ## About the author
 
-Built by **Yusuf Gadelrab** — computer science student at San José State University (BS Computer Science, expected May 2028), AI/ML builder, and co-author of two peer-reviewed SIGCSE Technical Symposium 2026 papers on computer science education ([DOI 10.1145/3770761.3777339](https://doi.org/10.1145/3770761.3777339)).
+Built by **Yusuf Gadelrab** — computer science student at San José State University (BS Computer Science, expected May 2028), and a co-author on the poster "Exploring Bilingual Coding for Inclusive Computer Science Learning" at the ACM SIGCSE Technical Symposium 2026 ([DOI 10.1145/3770761.3777339](https://doi.org/10.1145/3770761.3777339)).
 
 - About / FAQ: <https://yusuf-gadelrab.github.io/about.html>
 - Guides: <https://yusuf-gadelrab.github.io/guides.html>
